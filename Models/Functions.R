@@ -54,7 +54,7 @@ stability <- function(beta,n,l){
 
 
 #############################
-# Cretea Dummies for priors
+# Create Dummies for priors
 #############################
 # as in Banbura et al 2007
 create_dummies <- function(lambda, tau, delta, epsilon, p, mu, sigma, n){
@@ -67,7 +67,7 @@ create_dummies <- function(lambda, tau, delta, epsilon, p, mu, sigma, n){
   xd1 <- matrix()
   xd2 <- matrix()
 
-  # eqn 5 banbuar et al 2007
+  # eqn 5 banbura et al 2007
   if(lambda > 0){
     if(epsilon > 0){
       temp1 <- as.numeric((sigma * delta)/lambda)
@@ -100,9 +100,9 @@ create_dummies <- function(lambda, tau, delta, epsilon, p, mu, sigma, n){
 
 
     }
-  }
+  }# end of if lambda > 0
 
-
+  # equation 9 banbura et al.
   if(tau > 0){
     if(epsilon > 0){
       temp8 <- as.numeric((delta*mu)/tau)
@@ -135,7 +135,8 @@ IWPQ <- function(v,ixpx){
   z = matrix(0, nrow = v, ncol = k)
   mu = matrix(0, nrow = k, 1)
   for( i in 1:v){
-    z[i,] <- t((t(my_chol(ixpx,k)) %*% rnorm(k,1)))
+   # z[i,] <-  t((t(my_chol(ixpx,k)) %*% rnorm(k,1)))
+    z[i,] <- t((t(chol(ixpx))  %*% rnorm(k,1)))
   }
   out <- ginv(t(z) %*% z)
   out
@@ -200,10 +201,11 @@ my_chol_psd = function(a){
           if (i>1) {
             sum = root[i,1:(i-1)] %*% t(t(root[j,1:(i-1)]))
           }
-          x = (a[i,j] - sum)/root[i,i];
+          # change indices to switch to lower tri
+          x = (a[j,i] - sum)/root[i,i];
         }
 
-        root[j,i] = x;
+        root[i,j] = x;
       }
     }
   }
@@ -214,13 +216,14 @@ my_chol_psd = function(a){
 # CALCULATES PSUEDO INVERSE OF MATRIX
 ##########################################
 my_chol = function(a,b){ # where a is the matrix and b is the block size
+
   n = dim(a)[1];
   out = a;
   x = floor(n/b-1)*b;
   i=1
   while(i<x){
     out[i:(i+b-1),i:(i+b-1)] = my_chol_psd(out[i:(i+b-1),i:(i+b-1)]);
-    out[(i+b):n,i:(i+b-1)] = out[(i+b):n,i:(i+b-1)] %*% ginv(t(out[i:(i+b-1),i:(i+b-1)]));
+    out[(i+b):n,i:(i+b-1)] = out[(i+b):n,i:(i+b-1)] %*% MASS::ginv(t(out[i:(i+b-1),i:(i+b-1)]));
     out[(i+b):n,(i+b):n] = out[(i+b):n,(i+b):n] - out[(i+b):n,i:(i+b-1)]%*%t(out[(i+b):n,i:(i+b-1)]);
 
     i = i + b;
@@ -231,3 +234,41 @@ my_chol = function(a,b){ # where a is the matrix and b is the block size
   }
   return(out);
 }
+
+
+
+#################################################
+## changes negative and small eigenvalues to 0
+#################################################
+PSD <- function(vstar, tol){
+  newMat <- vstar
+  # remember set symmetric = T else we get complex numbers
+  newEig <- eigen(newMat, symmetric = T)
+  # change negative values to 0 and set tolerance level
+  #tol = 1e-9
+  newEig2 <- ifelse((newEig$values < 0) | (newEig$values < tol), tol, newEig$values)
+  #newEig2 <- ifelse(newEig$values < tol , tol , newEig$values)
+
+  # new covariance matrix
+  newMat <- newEig$vectors %*% diag(newEig2) %*% t(newEig$vectors)
+  # normalised covariance matri
+  newMat <- newMat/sqrt(diag(newMat) %*% t(diag(newMat)))
+  return(newMat)
+}
+
+
+############################################
+# VEC column stack function
+############################################
+vec <- function(y){
+  size = nrow(y)*ncol(y)
+  x = matrix(0,nrow = size, ncol = 1)
+  results <- vector("list", ncol(y))
+  for (i in 1:ncol(y)){
+    results[[i]] <- y[,i]
+  }
+  x = matrix(unlist(rbind(results[1:ncol(y)])))
+  return(x)
+}
+
+

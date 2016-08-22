@@ -2,10 +2,11 @@
 ## VAR with sign restrictions
 ###############################
 source('R/functions.R')
-library(Matrix); library(fBasics); library(MASS)
+library(Matrix);
 reps = 1000
 burn = 700
 
+# Most variables are in growth rates already
 usdata1 <- read.csv("C:/Users/dfoley/Dropbox/R/Macroeconometrics/Data/usdata1.csv",
                     header = FALSE)
 names(usdata1) <- c('FFRate', 'GDP', 'CPI', 'Cons', 'URate',
@@ -14,6 +15,7 @@ names(usdata1) <- c('FFRate', 'GDP', 'CPI', 'Cons', 'URate',
 N = ncol(usdata1)
 L = 2 # laglength of VAR
 Y = usdata1
+
 
 X <- Y
 # loop to create lags
@@ -61,9 +63,12 @@ for (i in 1:N){
 result <- create_dummies(lambdaP,tauP,deltaP,epsilonP,L,muP,sigmaP,N)
 x <- result[1][1]
 # convert back to matrix
-x <- matrix(unlist(x), ncol = 23)
+dimension_x <- lapply(x,dim)
+
+x <- matrix(unlist(x), nrow = dimension_x[[1]][1],ncol = dimension_x[[1]][2])
 y <- result[2][1]
-y <- matrix(unlist(y), ncol = N)
+dimension_y <- lapply(y,dim)
+y <- matrix(unlist(y), nrow = dimension_y[[1]][1],ncol = dimension_y[[1]][2])
 # append data to dummies
 Y = as.matrix(Y)
 X = as.matrix(X)
@@ -79,19 +84,34 @@ sigma <- diag(1,N)
 out <- array(0, c(reps-burn,36,N))
 
 jj=1
-
+# if matrix is non positive definite
 # main gibbs sampling alogrithm
 for (i in 1:reps){
   # posterior mean and variance
   vstar <- kronecker(sigma,ixx)
+
+
   # had to create function to calculate chol of non positive definite matrix
   # returns lower triangular so need to trasnspose for upper
-  beta <- mstar + t(t(matrix(rnorm(N*(N*L+1),1))) %*% t(my_chol(vstar,10)))
+  # explosive dynamics - problem maybe my_chol function
+  cholStatus <- try(u <- chol(vstar), silent = FALSE)
+  cholError <-  ifelse(class(cholStatus) == "try-error", TRUE, FALSE)
+                if(cholError == TRUE) {
+
+                  # function changes negative and small eigenvalues
+                  # so matrix is semi positive definite
+                  newMat <- PSD(vstar, 1e-8)
+                  beta <- mstar + t(t(matrix(rnorm(N*(N*L+1),1))) %*% chol(newMat))
+  }
+  else{
+            beta <- mstar + t(t(matrix(rnorm(N*(N*L+1),1))) %*% chol(vstar))
+  }#t(my_chol(vstar,10)))
+
 
   # draw covariance from inverse wishart
   e = Y0 - X0 %*% matrix(beta, nrow = (N*L+1), ncol = N)
   scale = t(e) %*% e
-  sigma = IWPQ(T1+nrow(y), ginv(scale))
+  sigma = IWPQ(T1+nrow(y), solve(scale))
 
   if(i > burn){
     # impose sign restrictions
@@ -140,7 +160,7 @@ for (i in 1:reps){
                        yhat[j-2,], 0))) %*% matrix(beta, nrow = (N*L+1), ncol = N) +
                        (vhat[j,] %*% A0hat1)
     }
-    out[JJ, , ] <- yhat
+    out[jj, , ] <- yhat
     jj = jj+1
 
 
